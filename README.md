@@ -15,6 +15,8 @@ such as:
 /proc/stat
 /proc/swaps
 /proc/uptime
+/proc/cpu_online
+/proc/loadavg
 ```
 
 are container aware such that the values displayed (e.g. in `/proc/uptime`)
@@ -60,3 +62,21 @@ send `SIGUSR1` to the pid of the running `LXCFS` process. This can be as simple
 as doing:
 
     kill -s USR1 $(pidof lxcfs)
+
+Note: A existing container will failed to read these mounted directories although the container can keep running.
+python/nginx reports CPU number as 1 after reload lxcfs
+
+## Example
+docker run -it --cpuset-cpus="0-2" \
+      -v /var/lib/lxcfs/proc/cpuinfo:/proc/cpuinfo:rw \
+      -v /var/lib/lxcfs/proc/diskstats:/proc/diskstats:rw \
+      -v /var/lib/lxcfs/proc/meminfo:/proc/meminfo:rw \
+      -v /var/lib/lxcfs/proc/stat:/proc/stat:rw \
+      -v /var/lib/lxcfs/proc/swaps:/proc/swaps:rw \
+      -v /var/lib/lxcfs/proc/uptime:/proc/uptime:rw \
+      -v /var/lib/lxcfs/proc/loadavg:/proc/loadavg:rw \
+      -v /var/lib/lxcfs/proc/cpu_online:/sys/devices/system/cpu/online:ro
+
+
+## Build
+1. build.sh: build a binary for current environment

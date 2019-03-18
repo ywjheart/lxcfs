@@ -69,6 +69,46 @@ static void users_unlock(void)
 	unlock_mutex(&user_count_mutex);
 }
 
+static pthread_t loadavg_pid = 0;
+
+/* Returns zero on success */
+static int start_loadavg(void) {
+	char *error;
+	pthread_t (*load_daemon)(int);
+
+	dlerror();    /* Clear any existing error */
+
+	load_daemon = (pthread_t (*)(int)) dlsym(dlopen_handle, "load_daemon");
+	error = dlerror();
+	if (error != NULL) {
+		lxcfs_error("load_daemon fails:%s\n", error);
+		return -1;
+	}
+	loadavg_pid = load_daemon(1);
+	if (loadavg_pid == 0)
+		return -1;
+
+	return 0;
+}
+
+/* Returns zero on success */
+static int stop_loadavg(void) {
+	char *error;
+	int (*stop_load_daemon)(pthread_t);
+
+	stop_load_daemon = (int (*)(pthread_t)) dlsym(dlopen_handle, "stop_load_daemon");
+	error = dlerror();
+	if (error != NULL) {
+		lxcfs_error("stop_load_daemon error: %s\n", error);
+		return -1;
+	}
+
+	if (stop_load_daemon(loadavg_pid) != 0)
+		return -1;
+
+	return 0;
+}
+
 static volatile sig_atomic_t need_reload;
 
 /* do_reload - reload the dynamic library.  Done under
@@ -76,6 +116,10 @@ static volatile sig_atomic_t need_reload;
 static void do_reload(void)
 {
 	char lxcfs_lib_path[PATH_MAX];
+
+	if (loadavg_pid > 0)
+		stop_loadavg();
+
 	if (dlopen_handle) {
 		lxcfs_debug("%s\n", "Closing liblxcfs.so handle.");
 		dlclose(dlopen_handle);
@@ -101,6 +145,9 @@ static void do_reload(void)
 	}
 
 good:
+	if (loadavg_pid > 0)
+		start_loadavg();
+
 	if (need_reload)
 		lxcfs_error("%s\n", "lxcfs: reloaded");
 	need_reload = 0;
@@ -745,8 +792,9 @@ static void usage()
 {
 	fprintf(stderr, "Usage:\n");
 	fprintf(stderr, "\n");
-	fprintf(stderr, "lxcfs [-f|-d] [-p pidfile] mountpoint\n");
+	fprintf(stderr, "lxcfs [-f|-d] -l [-p pidfile] mountpoint\n");
 	fprintf(stderr, "  -f running foreground by default; -d enable debug output \n");
+	fprintf(stderr, "  -l use loadavg \n");
 	fprintf(stderr, "  Default pidfile is %s/lxcfs.pid\n", RUNTIME_PATH);
 	fprintf(stderr, "lxcfs -h\n");
 	exit(1);
@@ -848,6 +896,7 @@ int main(int argc, char *argv[])
 	char *pidfile = NULL, *saveptr = NULL, *token = NULL, *v = NULL;
 	size_t pidfile_len;
 	bool debug = false, nonempty = false;
+	bool load_use = false;
 	/*
 	 * what we pass to fuse_main is:
 	 * argv[0] -s [-f|-d] -o allow_other,directio argv[1] NULL
@@ -859,6 +908,9 @@ int main(int argc, char *argv[])
 	swallow_arg(&argc, argv, "-s");
 	swallow_arg(&argc, argv, "-f");
 	debug = swallow_arg(&argc, argv, "-d");
+	if (swallow_arg(&argc, argv, "-l")) {
+		load_use = true;
+	}
 	if (swallow_option(&argc, argv, "-o", &v)) {
 		/* Parse multiple values */
 		for (; (token = strtok_r(v, ",", &saveptr)); v = NULL) {
@@ -912,8 +964,13 @@ int main(int argc, char *argv[])
 	if ((pidfd = set_pidfile(pidfile)) < 0)
 		goto out;
 
+	if (load_use && start_loadavg() != 0)
+		goto out;
+
 	if (!fuse_main(nargs, newargv, &lxcfs_ops, NULL))
 		ret = EXIT_SUCCESS;
+	if (load_use)
+		stop_loadavg();
 
 out:
 	if (dlopen_handle)
