@@ -5,11 +5,12 @@ Before=lxc.service
 Documentation=man:lxcfs(1)
 
 [Service]
-ExecStart=/usr/bin/lxcfs /var/lib/lxcfs/
+ExecStart=/usr/bin/lxcfs -l -o nonempty /var/lib/lxcfs/
 KillMode=process
 Restart=on-failure
 ExecStopPost=-/bin/fusermount -u /var/lib/lxcfs
 Delegate=yes
+ExecReload=/bin/kill -USR1 $MAINPID
 
 [Install]
 WantedBy=multi-user.target
