@@ -3511,20 +3511,24 @@ static int proc_meminfo_read(char *buf, size_t size, off_t offset,
 	prune_init_slice(cg);
 
 	// noted by yew: try cgroupv2 first, because get_min_menlimit returns an integer
-    if (cgfs_get_value("memory", cg, "memory.max", &memmax_str))  {
-        if (!strcmp(memmax_str,"max"))   {
+	if (cgfs_get_value("memory", cg, "memory.max", &memmax_str))
+	{
+		if (!strcmp(memmax_str,"max"))
+		{
 #ifndef PAGE_COUNTER_MAX
 #define PAGE_COUNTER_MAX 9223372036854771712ll//(LONG_MAX / PAGE_SIZE)
 #endif
-            memlimit = PAGE_COUNTER_MAX;
-        }
-        else {
-            memlimit = strtoul(memmax_str, NULL, 10);
-        }
-    }
-    else {
-        memlimit = get_min_memlimit(cg, "memory.limit_in_bytes");
-    }
+			memlimit = PAGE_COUNTER_MAX;
+		}
+		else
+		{
+			memlimit = strtoul(memmax_str, NULL, 10);
+		}
+	}
+	else
+	{
+		memlimit = get_min_memlimit(cg, "memory.limit_in_bytes");
+	}
 
 	if (!cgfs_get_value("memory", cg, "memory.usage_in_bytes", &memusage_str) &&
 			!cgfs_get_value("memory",cg,"memory.current", &memusage_str)) // added by yew: fallback to cgroupv2
